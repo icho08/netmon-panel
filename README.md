@@ -2,7 +2,7 @@
 
 A live network-connections overlay for Wayland compositors (Hyprland, Sway, etc.), pinned to the wallpaper layer via `gtk-layer-shell`. Shows every active connection on your machine — process, local/remote address, geolocated location with a flag, connection state, protocol, live bandwidth, and age — right on your desktop.
 
-![screenshot placeholder — eh](docs/screenshot.png)
+![screenshot placeholder — eh](docs/vpn_active.png)
 
 ## Features
 
