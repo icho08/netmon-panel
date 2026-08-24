@@ -8,6 +8,24 @@ import threading
 
 POS_FILE = "/tmp/.netmon_pos"
 
+# Screenshare mode: which fields to mask (True = mask, False = show)
+# Configure to your comfort level
+SCREENSHARE_MASK = {
+    "proc": False,      # process name
+    "local": False,     # local IP:port
+    "remote": True,     # remote IP:port
+    "loc": True,        # geolocation
+    "state": False,     # connection state
+    "proto": False,     # protocol
+    "rate": False,      # transfer rate
+    "age": False,       # connection age
+    "ip": True,         # public IP in header
+    "count": True,      # connection count
+    "iface": True,      # interface name
+    "timestamp": True,  # updated timestamp
+    "state_toggle": True,  # ESTAB/ALL toggle
+}
+
 COL_PX = {
     "proc": 150, "local": 140, "remote": 140, "loc": 150,
     "state": 92, "proto": 60, "rate": 78, "age": 48, "kill": 30,

@@ -41,33 +41,36 @@ sudo dnf install python3-gobject gtk3 gtk-layer-shell iproute2 curl
 
 ## Install
 
+**Quick try (run from repo):**
+```bash
+git clone https://github.com/icho08/netmon-panel.git
+cd netmon-panel
+python3 main.py
+```
+
+**Permanent install (for Hyprland autostart/keybind):**
 ```bash
 git clone https://github.com/icho08/netmon-panel.git
 mkdir -p ~/.config/hypr/scripts
-cp netmon-panel/netmon_panel.py ~/.config/hypr/scripts/netmon_panel.py
+cp -r netmon-panel/netmon ~/.config/hypr/scripts/
 cp netmon-panel/netmon-toggle.sh ~/.config/hypr/scripts/netmon-toggle.sh
-chmod +x ~/.config/hypr/scripts/netmon_panel.py ~/.config/hypr/scripts/netmon-toggle.sh
+cp netmon-panel/main.py ~/.config/hypr/scripts/netmon-panel
+chmod +x ~/.config/hypr/scripts/netmon-toggle.sh ~/.config/hypr/scripts/netmon-panel
 ```
 
-Pick one of two ways to start it — don't set up both, see the note below:
+Pick one of two ways to start it — don't set up both:
 
 **Option A — always on, starts with your session:**
 ```
-exec-once = python3 ~/.config/hypr/scripts/netmon_panel.py
+exec-once = python3 ~/.config/hypr/scripts/netmon-panel
 ```
 
-**Option B — toggle on/off with a keybind**, using `netmon-toggle.sh` (start it, and the same key kills it):
+**Option B — toggle on/off with a keybind**, using `netmon-toggle.sh`:
 ```
 bind = $mainMod, N, exec, ~/.config/hypr/scripts/netmon-toggle.sh
 ```
 
 > Don't combine A and B. The toggle script tracks the panel via a pidfile (`/tmp/.netmon_panel.pid`) that it writes itself when *it* launches the panel — if you `exec-once` the panel directly, that pidfile never gets created, so the first keybind press will just spawn a second panel instead of closing the running one. If you want it running on startup *and* toggleable, use `exec-once = ~/.config/hypr/scripts/netmon-toggle.sh` instead (it'll start the panel and write the pidfile the same way the keybind does).
-
-Or run it manually to try it out first:
-
-```bash
-python3 ~/.config/hypr/scripts/netmon_panel.py
-```
 
 ## Usage
 
@@ -84,13 +87,35 @@ The panel polls `ss` every 2 seconds and refreshes the "updated Ns ago" indicato
 
 ## Configuration
 
-Everything's plain constants at the top of `netmon_panel.py` — no config file, edit and restart:
+Everything's plain constants in `netmon/config.py` — no config file, edit and restart:
 
 - `COL_PX` — fixed pixel width per column, if you want to widen/narrow anything
 - `PROC_PALETTE` — the color rotation used for per-process dots/chips (colors are hashed from the process name, so a given process keeps the same color across restarts)
 - `CSS` (the big triple-quoted block) — colors, radii, fonts; swap `"JetBrainsMono Nerd Font"` for whatever you have installed
 - `POS_FILE` — where the dragged position is persisted
 - `PIDFILE` in `netmon-toggle.sh` (`/tmp/.netmon_panel.pid`) — where the toggle script tracks whether the panel is running; safe to delete manually if it ever gets out of sync (e.g. panel crashed without the toggle script closing it)
+
+## Project Structure
+
+```
+netmon-panel/
+├── main.py              # Entry point
+├── netmon/
+│   ├── __init__.py
+│   ├── config.py        # Constants, CSS, regex, palette
+│   ├── network.py       # Network utilities (ss parsing, IP, interfaces)
+│   ├── geo.py           # Geolocation (ip-api.com, caching)
+│   └── ui/
+│       ├── __init__.py
+│       ├── cells.py     # Cell rendering (text, pills, kill button)
+│       ├── header.py    # Header bar (VPN badge, IP, toggle, drag)
+│       ├── table.py     # Table rows + top-talker chips
+│       └── panel.py     # Main NetPanel window class
+├── netmon-toggle.sh     # Toggle script for keybind
+├── README.md
+├── LICENSE
+└── docs/
+```
 
 ## Known limitations
 

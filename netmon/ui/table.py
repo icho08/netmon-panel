@@ -6,7 +6,7 @@ import gi
 gi.require_version('Gtk', '3.0')
 from gi.repository import Gtk, GLib, Pango
 
-from ..config import COL_PX, STATE_CSS, proc_color, flag_emoji
+from ..config import COL_PX, STATE_CSS, proc_color, flag_emoji, SCREENSHARE_MASK
 from .cells import text_cell, pill_cell, kill_cell, _fixed_cell
 
 
@@ -54,6 +54,23 @@ class TableView:
                 f'<span foreground="{proc_color(p)}">{GLib.markup_escape_text(p)}</span>'
                 f'<span foreground="#6b7394"> \u00b7 {c}</span>'
             )
+            chip.get_style_context().add_class("chip")
+            self.chips_box.pack_start(chip, False, False, 0)
+        self.chips_box.show_all()
+
+    def update_chips_masked(self, mask_proc=False):
+        for child in self.chips_box.get_children():
+            self.chips_box.remove(child)
+        for _ in range(5):
+            chip = Gtk.Label()
+            if mask_proc:
+                chip.set_markup(
+                    f'<span foreground="#6b7394">******** \u00b7 **</span>'
+                )
+            else:
+                chip.set_markup(
+                    f'<span foreground="#6b7394">process_name \u00b7 **</span>'
+                )
             chip.get_style_context().add_class("chip")
             self.chips_box.pack_start(chip, False, False, 0)
         self.chips_box.show_all()
@@ -119,5 +136,75 @@ class TableView:
             empty.set_margin_top(6)
             empty.set_margin_bottom(6)
             self.rows_box.pack_start(empty, False, False, 4)
+
+        self.rows_box.show_all()
+
+    def render_rows_masked(self, conns=None, mask_config=None):
+        if mask_config is None:
+            mask_config = SCREENSHARE_MASK
+            
+        for child in self.rows_box.get_children():
+            self.rows_box.remove(child)
+
+        # Use actual connections if provided, otherwise show placeholder rows
+        display_conns = conns if conns else [None] * 5
+
+        for i, c in enumerate(display_conns[:5]):
+            row = Gtk.Box(spacing=10)
+            row.get_style_context().add_class("row-even" if i % 2 == 0 else "row-odd")
+
+            # Process - mask based on config
+            proc_label = Gtk.Label(xalign=0)
+            if mask_config.get("proc", False):
+                proc_label.set_markup(f'<span foreground="#6b7394">********</span>')
+            else:
+                proc_name = c["proc"] if c else "process_name"
+                proc_label.set_markup(
+                    f'<span foreground="{proc_color(proc_name)}">\u25cf</span> '
+                    f'<span foreground="#dbe4ff">{GLib.markup_escape_text(proc_name)}</span>'
+                )
+            proc_label.set_ellipsize(Pango.EllipsizeMode.END)
+            row.pack_start(_fixed_cell(COL_PX["proc"], proc_label), False, False, 0)
+
+            # Local IP - mask based on config
+            local_addr = "********" if mask_config.get("local", False) else (c["local"] if c else "local")
+            # Remote IP - mask based on config
+            remote_addr = "********" if mask_config.get("remote", True) else (c["remote"] if c else "remote")
+            row.pack_start(text_cell(local_addr, COL_PX["local"], ("cell",)), False, False, 0)
+            row.pack_start(text_cell(remote_addr, COL_PX["remote"], ("cell",)), False, False, 0)
+
+            # Location - mask based on config
+            loc_text = "********" if mask_config.get("loc", True) else (c["loc_label"] if c else "location")
+            loc_classes = ("cell", "cell-muted") if mask_config.get("loc", True) else ("cell",)
+            row.pack_start(text_cell(loc_text, COL_PX["loc"], loc_classes), False, False, 0)
+
+            # State - mask based on config
+            state = "******" if mask_config.get("state", False) else (c["state"] if c else "ESTAB")
+            state_variant = STATE_CSS.get(state, "state-other") if not mask_config.get("state", False) else "state-other"
+            row.pack_start(pill_cell(state, COL_PX["state"], state_variant, "state-pill"), False, False, 0)
+
+            # Proto - mask based on config
+            proto = "****" if mask_config.get("proto", False) else (c["proto"] if c else "tcp")
+            row.pack_start(pill_cell(proto, COL_PX["proto"], proto), False, False, 0)
+
+            # Rate - mask based on config
+            if mask_config.get("rate", False):
+                rate = "****"
+                rate_classes = ("cell", "cell-dim")
+            else:
+                rate = self._fmt_rate(c["rate"]) if c and c["rate"] > 0 else "-"
+                rate_classes = ("cell",) if c and c["rate"] > 0 else ("cell", "cell-dim")
+            row.pack_start(text_cell(rate, COL_PX["rate"], rate_classes), False, False, 0)
+
+            # Age - mask based on config
+            age = "**s" if mask_config.get("age", False) else (f"{c['age']}s" if c else "0s")
+            row.pack_start(text_cell(age, COL_PX["age"], ("cell", "cell-dim")), False, False, 0)
+
+            # Kill button always masked in screenshare mode
+            row.pack_start(kill_cell("********", None, self.on_kill_clicked), False, False, 0)
+
+            row_evbox = Gtk.EventBox()
+            row_evbox.add(row)
+            self.rows_box.pack_start(row_evbox, False, False, 0)
 
         self.rows_box.show_all()

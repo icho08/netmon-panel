@@ -17,7 +17,7 @@ import os
 import signal
 import time
 
-from ..config import CSS, POS_FILE
+from ..config import CSS, POS_FILE, SCREENSHARE_MASK
 from ..network import get_default_iface, get_public_ip, get_connections, load_saved_position, save_position
 from ..geo import get_location
 from .header import HeaderBar
@@ -43,6 +43,7 @@ class NetPanel(Gtk.Window):
         self._drag_timer_id = None
 
         self._show_all_states = False
+        self._screenshare_mode = False
         self._sort_key = "age"
         self._sort_reverse = True
         self._last_conns = []
@@ -73,14 +74,25 @@ class NetPanel(Gtk.Window):
             on_toggle_states=self._on_toggle_states,
             on_col_header_click=self._on_col_header_click,
         )
+        self.header.connect_screenshare_callback(self._on_toggle_screenshare)
         outer.add(self.header.get_widget())
 
-        outer.add(self.header.build_col_header())
+        self.col_header = self.header.build_col_header()
+        outer.add(self.col_header)
         self.header.update_sort_arrows(self._sort_key, self._sort_reverse)
 
-        outer.add(self.table.get_chips_widget())
-        outer.add(Gtk.Separator(orientation=Gtk.Orientation.HORIZONTAL))
-        outer.add(self.table.get_rows_widget())
+        self.chips_widget = self.table.get_chips_widget()
+        outer.add(self.chips_widget)
+
+        self.separator = Gtk.Separator(orientation=Gtk.Orientation.HORIZONTAL)
+        outer.add(self.separator)
+
+        self.rows_widget = self.table.get_rows_widget()
+        outer.add(self.rows_widget)
+
+        # Key press handler for screenshare toggle (S key)
+        self.add_events(Gdk.EventMask.KEY_PRESS_MASK)
+        self.connect("key-press-event", self._on_key_press)
 
         self.refresh()
         GLib.timeout_add_seconds(2, self.refresh)
@@ -159,6 +171,18 @@ class NetPanel(Gtk.Window):
         self.table.render_rows(self._last_conns, self._sort_key, self._sort_reverse)
         return True
 
+    def _on_toggle_screenshare(self, widget, event):
+        self._screenshare_mode = not self._screenshare_mode
+        self.header.update_screenshare_state(self._screenshare_mode)
+        self.refresh()  # Re-render with masked data
+        return True
+
+    def _on_key_press(self, widget, event):
+        if event.keyval == Gdk.KEY_s or event.keyval == Gdk.KEY_S:
+            self._on_toggle_screenshare(None, None)
+            return True
+        return False
+
     def _tick_updated_label(self):
         secs = int(time.time() - self._last_refresh_ts)
         self.header.update_timestamp(secs)
@@ -193,15 +217,47 @@ class NetPanel(Gtk.Window):
         if pub_ip != "unknown":
             loc = get_location(pub_ip)
             flag = __import__('netmon.config', fromlist=['flag_emoji']).flag_emoji(loc["cc"])
-            self.header.update_ip_location(pub_ip, loc["label"], flag)
+            if self._screenshare_mode:
+                # Show only country name if loc masking enabled
+                if SCREENSHARE_MASK.get("loc", True):
+                    country_only = loc["label"].split(",")[-1].strip() if "," in loc["label"] else loc["label"]
+                    self.header.loc_value.set_label(f"{flag} {country_only}".strip())
+                else:
+                    self.header.loc_value.set_label(f"{flag} {loc['label']}".strip())
+                # Mask public IP if configured
+                if SCREENSHARE_MASK.get("ip", True):
+                    self.header.ip_value.set_label("********")
+                else:
+                    self.header.ip_value.set_label(pub_ip)
+            else:
+                self.header.update_ip_location(pub_ip, loc["label"], flag)
         else:
             self.header.update_ip_location("unknown", "?", "")
             
-        self.header.update_count(len(conns))
-        self.header.update_timestamp(0)
+        if self._screenshare_mode:
+            # Mask header data based on config
+            if SCREENSHARE_MASK.get("count", True):
+                self.header.count_badge.set_label("********")
+            else:
+                self.header.update_count(len(conns))
+            if SCREENSHARE_MASK.get("timestamp", True):
+                self.header.updated_label.set_label("********")
+            else:
+                self.header.update_timestamp(0)
+            if SCREENSHARE_MASK.get("state_toggle", True):
+                self.header.state_toggle.set_label("********")
+            if SCREENSHARE_MASK.get("iface", True):
+                self.header.iface_label.set_label("********")
+            # Mask chips (top talkers)
+            self.table.update_chips_masked(SCREENSHARE_MASK.get("proc", False))
+            # Mask table rows based on config
+            self.table.render_rows_masked(self._last_conns, SCREENSHARE_MASK)
+        else:
+            self.header.update_count(len(conns))
+            self.header.update_timestamp(0)
 
-        self.table.update_chips(conns)
-        self.table.render_rows(conns, self._sort_key, self._sort_reverse)
+            self.table.update_chips(conns)
+            self.table.render_rows(conns, self._sort_key, self._sort_reverse)
         return True
 
 

@@ -19,6 +19,7 @@ class HeaderBar:
         self.on_drag_motion = on_drag_motion
         self.on_toggle_states = on_toggle_states
         self.on_col_header_click = on_col_header_click
+        self.on_toggle_screenshare = None
         
         self._col_head_labels = {}
         self.state_toggle = None
@@ -81,6 +82,15 @@ class HeaderBar:
         toggle_evbox.add_events(Gdk.EventMask.BUTTON_PRESS_MASK)
         toggle_evbox.connect("button-press-event", self.on_toggle_states)
         header_box.pack_start(toggle_evbox, False, False, 0)
+
+        # screenshare mode toggle
+        self.screenshare_toggle = Gtk.Label(label="\u25bc")  # down arrow
+        self.screenshare_toggle.get_style_context().add_class("toggle-btn")
+        self.ss_evbox = Gtk.EventBox()
+        self.ss_evbox.add(self.screenshare_toggle)
+        self.ss_evbox.add_events(Gdk.EventMask.BUTTON_PRESS_MASK)
+        self.ss_evbox.set_tooltip_text("Toggle screenshare mode (S)")
+        header_box.pack_start(self.ss_evbox, False, False, 0)
 
         self.updated_label = Gtk.Label(label="updated 0s ago")
         self.updated_label.get_style_context().add_class("updated-label")
@@ -165,6 +175,25 @@ class HeaderBar:
         else:
             self.state_toggle.set_label("ESTAB")
             ctx.remove_class("toggle-btn-active")
+
+    def update_screenshare_state(self, enabled):
+        ctx = self.screenshare_toggle.get_style_context()
+        if enabled:
+            self.screenshare_toggle.set_label("\u25b2")  # up arrow
+            ctx.add_class("toggle-btn-active")
+        else:
+            self.screenshare_toggle.set_label("\u25bc")  # down arrow
+            ctx.remove_class("toggle-btn-active")
+
+    def connect_screenshare_callback(self, callback):
+        self.on_toggle_screenshare = callback
+        self.ss_evbox.connect("button-press-event", callback)
+
+    def set_screenshare_visibility(self, enabled):
+        """Show/hide header elements based on screenshare mode."""
+        # Hide: iface_label, ip_wrap, loc_wrap, count_badge, state_toggle, updated_label
+        # Keep: vpn_badge, loc_value (country only), screenshare_toggle
+        pass  # Will be implemented by panel
 
     def update_timestamp(self, secs):
         self.updated_label.set_label(f"updated {secs}s ago")
