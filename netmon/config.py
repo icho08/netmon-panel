@@ -8,23 +8,9 @@ import threading
 
 POS_FILE = "/tmp/.netmon_pos"
 
-# Screenshare mode: which fields to mask (True = mask, False = show)
-# Configure to your comfort level
-SCREENSHARE_MASK = {
-    "proc": False,      # process name
-    "local": False,     # local IP:port
-    "remote": True,     # remote IP:port
-    "loc": True,        # geolocation
-    "state": False,     # connection state
-    "proto": False,     # protocol
-    "rate": False,      # transfer rate
-    "age": False,       # connection age
-    "ip": True,         # public IP in header
-    "count": True,      # connection count
-    "iface": True,      # interface name
-    "timestamp": True,  # updated timestamp
-    "state_toggle": True,  # ESTAB/ALL toggle
-}
+# Privacy / screenshare behaviour now lives in netmon/privacy.py as three
+# levels (LIVE / SAFE / STRICT) instead of a per-field mask dict.
+# Set the level the panel should start in after a fresh boot there.
 
 COL_PX = {
     "proc": 150, "local": 140, "remote": 140, "loc": 150,
@@ -44,6 +30,15 @@ window { background-color: transparent; }
 #panel {
     background-color: rgba(9, 10, 20, 0.99);
     border-radius: 20px;
+    border: 1px solid transparent;
+}
+
+/* privacy tint so you can never mistake which mode you are sharing in */
+#panel.panel-safe {
+    border: 1px solid rgba(253, 230, 138, 0.45);
+}
+#panel.panel-strict {
+    border: 1px solid rgba(134, 239, 172, 0.55);
 }
 
 label {
@@ -91,6 +86,8 @@ label {
 }
 .toggle-btn:hover { background-color: rgba(255,140,200,0.1); }
 .toggle-btn-active { color: #ff8ac8; background-color: rgba(255,140,200,0.14); }
+.toggle-btn-safe { color: #fde68a; background-color: rgba(253,230,138,0.16); }
+.toggle-btn-strict { color: #86efac; background-color: rgba(134,239,172,0.18); }
 
 .updated-label { color: #4d5578; font-size: 10px; }
 
@@ -137,6 +134,8 @@ label {
 .cell { font-size: 12px; }
 .cell-muted { color: #6b7394; }
 .cell-dim { color: #4d5578; }
+/* redacted values read as clearly redacted, not as broken data */
+.cell-masked { color: #8b93b8; font-style: italic; }
 
 .col-header-row { padding: 0 10px 10px 10px; }
 .chips-row { padding: 2px 2px 0 2px; }

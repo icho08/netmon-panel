@@ -7,6 +7,7 @@ gi.require_version('Gtk', '3.0')
 from gi.repository import Gtk, Gdk, Pango
 
 from ..config import COL_PX, SORTABLE
+from .. import privacy
 from .cells import vsep
 
 
@@ -83,13 +84,15 @@ class HeaderBar:
         toggle_evbox.connect("button-press-event", self.on_toggle_states)
         header_box.pack_start(toggle_evbox, False, False, 0)
 
-        # screenshare mode toggle
-        self.screenshare_toggle = Gtk.Label(label="\u25bc")  # down arrow
+        # privacy / screenshare mode toggle: LIVE -> SAFE -> STRICT
+        self.screenshare_toggle = Gtk.Label(
+            label=f"{privacy.MODE_ICON[privacy.LIVE]} {privacy.MODE_LABEL[privacy.LIVE]}"
+        )
         self.screenshare_toggle.get_style_context().add_class("toggle-btn")
         self.ss_evbox = Gtk.EventBox()
         self.ss_evbox.add(self.screenshare_toggle)
         self.ss_evbox.add_events(Gdk.EventMask.BUTTON_PRESS_MASK)
-        self.ss_evbox.set_tooltip_text("Toggle screenshare mode (S)")
+        self.ss_evbox.set_tooltip_text(privacy.MODE_TOOLTIP[privacy.LIVE])
         header_box.pack_start(self.ss_evbox, False, False, 0)
 
         self.updated_label = Gtk.Label(label="updated 0s ago")
@@ -176,24 +179,23 @@ class HeaderBar:
             self.state_toggle.set_label("ESTAB")
             ctx.remove_class("toggle-btn-active")
 
-    def update_screenshare_state(self, enabled):
+    def update_privacy_state(self, mode):
+        """Reflect the current privacy level in the header pill."""
         ctx = self.screenshare_toggle.get_style_context()
-        if enabled:
-            self.screenshare_toggle.set_label("\u25b2")  # up arrow
-            ctx.add_class("toggle-btn-active")
-        else:
-            self.screenshare_toggle.set_label("\u25bc")  # down arrow
-            ctx.remove_class("toggle-btn-active")
+        for cls in ("toggle-btn-safe", "toggle-btn-strict"):
+            ctx.remove_class(cls)
+        self.screenshare_toggle.set_label(
+            f"{privacy.MODE_ICON[mode]} {privacy.MODE_LABEL[mode]}"
+        )
+        self.ss_evbox.set_tooltip_text(privacy.MODE_TOOLTIP[mode])
+        if mode == privacy.SAFE:
+            ctx.add_class("toggle-btn-safe")
+        elif mode == privacy.STRICT:
+            ctx.add_class("toggle-btn-strict")
 
-    def connect_screenshare_callback(self, callback):
+    def connect_privacy_callback(self, callback):
         self.on_toggle_screenshare = callback
         self.ss_evbox.connect("button-press-event", callback)
-
-    def set_screenshare_visibility(self, enabled):
-        """Show/hide header elements based on screenshare mode."""
-        # Hide: iface_label, ip_wrap, loc_wrap, count_badge, state_toggle, updated_label
-        # Keep: vpn_badge, loc_value (country only), screenshare_toggle
-        pass  # Will be implemented by panel
 
     def update_timestamp(self, secs):
         self.updated_label.set_label(f"updated {secs}s ago")

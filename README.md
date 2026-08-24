@@ -2,7 +2,26 @@
 
 A live network-connections overlay for Wayland compositors (Hyprland, Sway, etc.), pinned to the wallpaper layer via `gtk-layer-shell`. Shows every active connection on your machine — process, local/remote address, geolocated location with a flag, connection state, protocol, live bandwidth, and age — right on your desktop.
 
-![screenshot placeholder — eh](docs/vpn_active.png)
+<details>
+<summary><h3>Screenshare privacy modes (click to expand screenshots)</h3></summary>
+
+**`LIVE` — everything visible** (remote addresses and locations blurred here for the README only):
+
+![LIVE mode](docs/live.png)
+
+**`SAFE` — call-friendly**: public IP, remote IPs and city redacted, country flag kept; process names, ports, states, rates, ages and sorting all still work.
+
+![SAFE mode](docs/safe.png)
+
+**`STRICT` — hard privacy**: addresses, locations and app names become stable anonymous aliases (`host-orion46`, `app-nova71`); tooltips explain the mode, kill actions are disabled.
+
+![STRICT mode](docs/strict.png)
+
+**Behind another window**: the panel sits on the wallpaper layer, so opening any app simply covers it — nothing floats over your shared screen.
+
+![Another app open on top of the panel](docs/background.png)
+
+</details>
 
 ## Features
 
@@ -14,6 +33,7 @@ A live network-connections overlay for Wayland compositors (Hyprland, Sway, etc.
 - **Click-to-sort**: click any sortable column header (`PROC`, `LOCATION`, `STATE`, `PROTO`, `RATE`, `AGE`) to sort by it, click again to reverse
 - **Kill switch**: a small ✕ per row to `SIGTERM` a connection's owning process, with a confirmation prompt
 - **Top talkers**: a chip row summarizing which processes hold the most connections right now
+- **Screenshare privacy modes**: one click (or `S`) cycles `LIVE` -> `SAFE` -> `STRICT`. `SAFE` redacts remote/local IPs down to their first octet and your public IP + city while keeping process names, ports, states, rates, ages and sorting fully usable on a call; `STRICT` swaps addresses, locations and app names for stable anonymous aliases (`host-nova42`, `app-kilo01`) so rows stay distinguishable without leaking anything. The panel border and header pill change color so you always know what you're sharing, and the mode is remembered across restarts (`/tmp/.netmon_privacy`)
 - **VPN indicator**: flags whether your default route is going through a `tun`/`wg`/`ppp`/`utun` interface
 - **Draggable**: grab the header bar to reposition the panel; position is persisted to `/tmp/.netmon_pos` and restored on restart
 - **Zero native deps beyond stdlib** aside from GTK/GObject bindings — no Python packages to pip install
@@ -80,7 +100,9 @@ bind = $mainMod, N, exec, ~/.config/hypr/scripts/netmon-toggle.sh
 | Toggle established-only vs. all states | Click the `ESTAB` / `ALL` label in the header |
 | Sort by a column | Click `PROC`, `LOCATION`, `STATE`, `PROTO`, `RATE`, or `AGE`; click again to reverse |
 | Kill a connection's process | Click the ✕ at the end of a row, confirm |
-| See full local/remote address | Hover a row (tooltip) |
+| See full local/remote address | Hover a row (tooltip) — disabled outside `LIVE` so hovering can't re-leak |
+| Cycle screenshare privacy (`LIVE` / `SAFE` / `STRICT`) | Click the eye/glasses/lock pill in the header, or press `S` |
+| Jump straight back to `LIVE` | Right-click the privacy pill, or press `Esc` |
 | Show/hide the whole panel | Run `netmon-toggle.sh` (or its keybind, if you set one up) |
 
 The panel polls `ss` every 2 seconds and refreshes the "updated Ns ago" indicator every second.
@@ -93,6 +115,8 @@ Everything's plain constants in `netmon/config.py` — no config file, edit and 
 - `PROC_PALETTE` — the color rotation used for per-process dots/chips (colors are hashed from the process name, so a given process keeps the same color across restarts)
 - `CSS` (the big triple-quoted block) — colors, radii, fonts; swap `"JetBrainsMono Nerd Font"` for whatever you have installed
 - `POS_FILE` — where the dragged position is persisted
+- `netmon/privacy.py` — everything about screenshare masking: the three levels, how addresses/locations/process names are redacted at each one, the alias wordlist, and `STATE_FILE` (`/tmp/.netmon_privacy`) where the last used level is remembered. Delete that file to always start in `LIVE`.
+- `.cell-masked`, `.toggle-btn-safe`, `.toggle-btn-strict`, `#panel.panel-safe`, `#panel.panel-strict` in `CSS` — the privacy-mode colors/tints
 - `PIDFILE` in `netmon-toggle.sh` (`/tmp/.netmon_panel.pid`) — where the toggle script tracks whether the panel is running; safe to delete manually if it ever gets out of sync (e.g. panel crashed without the toggle script closing it)
 
 ## Project Structure
@@ -103,6 +127,7 @@ netmon-panel/
 ├── netmon/
 │   ├── __init__.py
 │   ├── config.py        # Constants, CSS, regex, palette
+│   ├── privacy.py       # Screenshare privacy levels + masking helpers
 │   ├── network.py       # Network utilities (ss parsing, IP, interfaces)
 │   ├── geo.py           # Geolocation (ip-api.com, caching)
 │   └── ui/
@@ -121,4 +146,5 @@ netmon-panel/
 
 - Killing a process you don't own, or seeing its pid at all, requires the script to have permission to see it (root, or same user) — rows without a visible pid have the kill button disabled.
 - Geolocation depends on a third-party free API (`ip-api.com`) with rate limits; if you hammer it, lookups will start failing silently and fall back to `?`.
+- In `STRICT` mode the kill button is intentionally disabled (the confirm dialog would print the real process name and pid on screen). Press `Esc` to drop back to `LIVE` if you need to kill something.
 - No historical data — this is a live snapshot view, not a logger. If you want history, point it at a proper tool (`nethogs`, `bmon`, `vnstat`) alongside this.

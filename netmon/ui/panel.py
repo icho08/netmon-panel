@@ -17,7 +17,8 @@ import os
 import signal
 import time
 
-from ..config import CSS, POS_FILE, SCREENSHARE_MASK
+from ..config import CSS, POS_FILE
+from .. import privacy
 from ..network import get_default_iface, get_public_ip, get_connections, load_saved_position, save_position
 from ..geo import get_location
 from .header import HeaderBar
@@ -43,7 +44,7 @@ class NetPanel(Gtk.Window):
         self._drag_timer_id = None
 
         self._show_all_states = False
-        self._screenshare_mode = False
+        self._privacy_mode = privacy.load_mode()
         self._sort_key = "age"
         self._sort_reverse = True
         self._last_conns = []
@@ -63,6 +64,7 @@ class NetPanel(Gtk.Window):
 
         outer = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=14)
         outer.set_name("panel")
+        self.panel_box = outer
         outer.set_border_width(26)
         self.add(outer)
 
@@ -74,7 +76,7 @@ class NetPanel(Gtk.Window):
             on_toggle_states=self._on_toggle_states,
             on_col_header_click=self._on_col_header_click,
         )
-        self.header.connect_screenshare_callback(self._on_toggle_screenshare)
+        self.header.connect_privacy_callback(self._on_toggle_privacy)
         outer.add(self.header.get_widget())
 
         self.col_header = self.header.build_col_header()
@@ -90,9 +92,12 @@ class NetPanel(Gtk.Window):
         self.rows_widget = self.table.get_rows_widget()
         outer.add(self.rows_widget)
 
-        # Key press handler for screenshare toggle (S key)
+        # Keyboard: S cycles privacy modes, Escape jumps straight back to LIVE
         self.add_events(Gdk.EventMask.KEY_PRESS_MASK)
         self.connect("key-press-event", self._on_key_press)
+
+        self.header.update_privacy_state(self._privacy_mode)
+        self._apply_privacy_style()
 
         self.refresh()
         GLib.timeout_add_seconds(2, self.refresh)
@@ -171,15 +176,37 @@ class NetPanel(Gtk.Window):
         self.table.render_rows(self._last_conns, self._sort_key, self._sort_reverse)
         return True
 
-    def _on_toggle_screenshare(self, widget, event):
-        self._screenshare_mode = not self._screenshare_mode
-        self.header.update_screenshare_state(self._screenshare_mode)
-        self.refresh()  # Re-render with masked data
+    def _apply_privacy_style(self):
+        """Give the whole panel a visible privacy tint so you always know."""
+        ctx = self.panel_box.get_style_context()
+        for cls in ("panel-safe", "panel-strict"):
+            ctx.remove_class(cls)
+        if self._privacy_mode == privacy.SAFE:
+            ctx.add_class("panel-safe")
+        elif self._privacy_mode == privacy.STRICT:
+            ctx.add_class("panel-strict")
+
+    def _set_privacy_mode(self, mode):
+        self._privacy_mode = mode
+        privacy.save_mode(mode)
+        self.header.update_privacy_state(mode)
+        self._apply_privacy_style()
+        self.refresh()
+
+    def _on_toggle_privacy(self, widget, event):
+        # right-click / middle-click goes straight back to LIVE
+        if event is not None and getattr(event, "button", 1) in (2, 3):
+            self._set_privacy_mode(privacy.LIVE)
+        else:
+            self._set_privacy_mode(privacy.next_mode(self._privacy_mode))
         return True
 
     def _on_key_press(self, widget, event):
-        if event.keyval == Gdk.KEY_s or event.keyval == Gdk.KEY_S:
-            self._on_toggle_screenshare(None, None)
+        if event.keyval in (Gdk.KEY_s, Gdk.KEY_S):
+            self._set_privacy_mode(privacy.next_mode(self._privacy_mode))
+            return True
+        if event.keyval == Gdk.KEY_Escape and self._privacy_mode != privacy.LIVE:
+            self._set_privacy_mode(privacy.LIVE)
             return True
         return False
 
@@ -189,7 +216,7 @@ class NetPanel(Gtk.Window):
         return True
 
     def _on_kill_clicked(self, button, proc, pid):
-        if not pid:
+        if not pid or not privacy.allow_kill(self._privacy_mode):
             return
         dialog = Gtk.MessageDialog(
             transient_for=self, flags=0, message_type=Gtk.MessageType.QUESTION,
@@ -205,6 +232,7 @@ class NetPanel(Gtk.Window):
                 pass
 
     def refresh(self):
+        mode = self._privacy_mode
         iface = get_default_iface()
         vpn = bool(iface and __import__('re').match(r"^(tun|wg|ppp|utun)", iface))
         pub_ip = get_public_ip()
@@ -212,52 +240,30 @@ class NetPanel(Gtk.Window):
         self._last_conns = conns
         self._last_refresh_ts = time.time()
 
-        self.header.update_vpn_status(vpn, iface)
-        
+        # iface names leak VPN provider details, so only hide them in STRICT
+        iface_shown = iface if mode != privacy.STRICT else "hidden"
+        self.header.update_vpn_status(vpn, iface_shown)
+
         if pub_ip != "unknown":
             loc = get_location(pub_ip)
             flag = __import__('netmon.config', fromlist=['flag_emoji']).flag_emoji(loc["cc"])
-            if self._screenshare_mode:
-                # Show only country name if loc masking enabled
-                if SCREENSHARE_MASK.get("loc", True):
-                    country_only = loc["label"].split(",")[-1].strip() if "," in loc["label"] else loc["label"]
-                    self.header.loc_value.set_label(f"{flag} {country_only}".strip())
-                else:
-                    self.header.loc_value.set_label(f"{flag} {loc['label']}".strip())
-                # Mask public IP if configured
-                if SCREENSHARE_MASK.get("ip", True):
-                    self.header.ip_value.set_label("********")
-                else:
-                    self.header.ip_value.set_label(pub_ip)
-            else:
-                self.header.update_ip_location(pub_ip, loc["label"], flag)
+            if mode == privacy.STRICT:
+                flag = ""
+            self.header.update_ip_location(
+                privacy.mask_public_ip(pub_ip, mode),
+                privacy.mask_location(loc["label"], mode),
+                flag,
+            )
         else:
             self.header.update_ip_location("unknown", "?", "")
-            
-        if self._screenshare_mode:
-            # Mask header data based on config
-            if SCREENSHARE_MASK.get("count", True):
-                self.header.count_badge.set_label("********")
-            else:
-                self.header.update_count(len(conns))
-            if SCREENSHARE_MASK.get("timestamp", True):
-                self.header.updated_label.set_label("********")
-            else:
-                self.header.update_timestamp(0)
-            if SCREENSHARE_MASK.get("state_toggle", True):
-                self.header.state_toggle.set_label("********")
-            if SCREENSHARE_MASK.get("iface", True):
-                self.header.iface_label.set_label("********")
-            # Mask chips (top talkers)
-            self.table.update_chips_masked(SCREENSHARE_MASK.get("proc", False))
-            # Mask table rows based on config
-            self.table.render_rows_masked(self._last_conns, SCREENSHARE_MASK)
-        else:
-            self.header.update_count(len(conns))
-            self.header.update_timestamp(0)
 
-            self.table.update_chips(conns)
-            self.table.render_rows(conns, self._sort_key, self._sort_reverse)
+        # counts, states, rates and the refresh clock stay live in every mode:
+        # they carry no identifying data and are what makes the panel useful.
+        self.header.update_count(len(conns))
+        self.header.update_timestamp(0)
+
+        self.table.update_chips(conns, mode)
+        self.table.render_rows(conns, self._sort_key, self._sort_reverse, mode)
         return True
 
 

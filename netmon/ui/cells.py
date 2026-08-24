@@ -44,11 +44,14 @@ def vsep():
     return sep
 
 
-def kill_cell(proc, pid, on_kill_clicked):
+def kill_cell(proc, pid, on_kill_clicked, disabled_tip=None):
     btn = Gtk.Button(label="\u2715")
     btn.get_style_context().add_class("kill-btn")
     btn.set_sensitive(pid is not None)
-    btn.set_tooltip_text(f"Kill {proc} (pid {pid})" if pid else "No permission to see pid")
+    if pid:
+        btn.set_tooltip_text(f"Kill {proc} (pid {pid})")
+    else:
+        btn.set_tooltip_text(disabled_tip or "No permission to see pid")
     btn.connect("clicked", on_kill_clicked, proc, pid)
     box = Gtk.Box()
     box.set_size_request(COL_PX["kill"], -1)
